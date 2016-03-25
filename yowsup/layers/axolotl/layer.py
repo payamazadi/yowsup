@@ -25,9 +25,17 @@ from axolotl.nosessionexception import NoSessionException
 from axolotl.untrustedidentityexception import UntrustedIdentityException
 from .protocolentities.receipt_outgoing_retry import RetryOutgoingReceiptProtocolEntity
 from yowsup.common import YowConstants
-import binascii
-import sys
 
+#import binascii
+#import sys
+
+import encrypted_media_pb2
+
+#rom Crypto.Cipher import AES
+#import urllib2
+#from axolotl.kdf.hkdfv3 import HKDFv3
+#from axolotl.util.byteutil import ByteUtil
+import base64
 import logging
 logger = logging.getLogger(__name__)
 
@@ -114,7 +122,7 @@ class YowAxolotlLayer(YowProtocolLayer):
         :type protocolTreeNode: ProtocolTreeNode
         """
         if not self.processIqRegistry(protocolTreeNode):
-            if protocolTreeNode.tag == "message":
+            if protocolTreeNode.tag == "message" or protocolTreeNode.tag == "media":
                 self.onMessage(protocolTreeNode)
                 return
             elif protocolTreeNode.tag == "notification" and protocolTreeNode["type"] == "encrypt":
@@ -262,8 +270,30 @@ class YowAxolotlLayer(YowProtocolLayer):
         if pkMessageProtocolEntity.getVersion() == 2:
             plaintext = self.unpadV2Plaintext(plaintext)
 
+        if node.getAttributeValue("type") == 'text':
+            bodyNode = ProtocolTreeNode("body", data = plaintext)
+        if node.getAttributeValue("type") == 'media':
+            # get preview
+            pos = plaintext.upper().find(binascii.unhexlify('ffd8ffe0'.upper()))
+            preview = plaintext[pos:] if pos > 0 else ""
 
-        bodyNode = ProtocolTreeNode("body", data = plaintext)
+            #decode schema from encrypted message
+            media = encrypted_media_pb2.Media()
+            media.ParseFromString(plaintext)
+
+            #logger.debug("compare: " + str(plaintext[pos:] != media.thumbnail))
+            bodyNode = ProtocolTreeNode("media", data = preview)
+            bodyNode.setAttribute("type", node.getChild("enc").getAttributeValue("mediatype"))
+            bodyNode.setAttribute("size", str(media.length))
+            bodyNode.setAttribute("width", str(media.width))
+            bodyNode.setAttribute("height", str(media.height))
+            bodyNode.setAttribute("encoding", "unknown")
+            bodyNode.setAttribute("caption", media.caption)
+            bodyNode.setAttribute("mimetype", media.mimetype)
+            bodyNode.setAttribute("filehash", base64.b64encode(media.sha256))
+            bodyNode.setAttribute("url", media.url)
+            bodyNode.setAttribute("refkey", base64.b64encode(media.refkey))
+
         node.addChild(bodyNode)
         self.toUpper(node)
 
