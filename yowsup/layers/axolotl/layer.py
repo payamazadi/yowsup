@@ -25,9 +25,8 @@ from axolotl.nosessionexception import NoSessionException
 from axolotl.untrustedidentityexception import UntrustedIdentityException
 from .protocolentities.receipt_outgoing_retry import RetryOutgoingReceiptProtocolEntity
 from yowsup.common import YowConstants
-
-#import binascii
-#import sys
+import binascii
+import sys
 
 import encrypted_media_pb2
 
@@ -229,6 +228,8 @@ class YowAxolotlLayer(YowProtocolLayer):
 
             if node.getChild("enc")["type"] == "pkmsg":
                 self.handlePreKeyWhisperMessage(node)
+            elif node.getChild("enc")["type"] == "msg" and node.getChild("enc")["mediatype"] == "image":
+                self.handlePreKeyWhisperMessage(node) #what should this be!?
             else:
                 self.handleWhisperMessage(node)
         except InvalidMessageException as e:
@@ -274,6 +275,7 @@ class YowAxolotlLayer(YowProtocolLayer):
             bodyNode = ProtocolTreeNode("body", data = plaintext)
         if node.getAttributeValue("type") == 'media':
             # get preview
+            print("HERE")
             pos = plaintext.upper().find(binascii.unhexlify('ffd8ffe0'.upper()))
             preview = plaintext[pos:] if pos > 0 else ""
 
@@ -294,6 +296,7 @@ class YowAxolotlLayer(YowProtocolLayer):
             bodyNode.setAttribute("url", media.url)
             bodyNode.setAttribute("refkey", base64.b64encode(media.refkey))
 
+
         node.addChild(bodyNode)
         self.toUpper(node)
 
@@ -307,7 +310,32 @@ class YowAxolotlLayer(YowProtocolLayer):
         if encMessageProtocolEntity.getVersion() == 2:
             plaintext = self.unpadV2Plaintext(plaintext)
 
-        bodyNode = ProtocolTreeNode("body", data = plaintext)
+        if node.getAttributeValue("type") == 'text':
+            bodyNode = ProtocolTreeNode("body", data = plaintext)
+        if node.getAttributeValue("type") == 'media':
+            # get preview
+            print("HERE")
+            pos = plaintext.upper().find(binascii.unhexlify('ffd8ffe0'.upper()))
+            preview = plaintext[pos:] if pos > 0 else ""
+
+            #decode schema from encrypted message
+            media = encrypted_media_pb2.Media()
+            media.ParseFromString(plaintext)
+
+            #logger.debug("compare: " + str(plaintext[pos:] != media.thumbnail))
+            bodyNode = ProtocolTreeNode("media", data = preview)
+            bodyNode.setAttribute("type", node.getChild("enc").getAttributeValue("mediatype"))
+            bodyNode.setAttribute("size", str(media.length))
+            bodyNode.setAttribute("width", str(media.width))
+            bodyNode.setAttribute("height", str(media.height))
+            bodyNode.setAttribute("encoding", "unknown")
+            bodyNode.setAttribute("caption", media.caption)
+            bodyNode.setAttribute("mimetype", media.mimetype)
+            bodyNode.setAttribute("filehash", base64.b64encode(media.sha256))
+            bodyNode.setAttribute("url", media.url)
+            bodyNode.setAttribute("refkey", base64.b64encode(media.refkey))
+            bodyNode.setAttribute("file", "wat")
+
         node.addChild(bodyNode)
         self.toUpper(node)
 
